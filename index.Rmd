@@ -1,0 +1,184 @@
+---
+title: "Homework 5 Exercise 1"
+author: "Miranda Law"
+date: "2026-01-19"
+output: html_document
+---
+# Start fresh
+```{r start-fresh}
+# clear the memory of the working environment at the start of the session
+rm(list = ls())
+```
+
+# Install and load packages
+
+```{r packages}
+# install the rio package if necessary
+# install.packages('rio')
+
+# install the ggplot2 package if necessary
+# install.packages('ggplot2')
+
+# install the dplyr package if necessary
+# install.packages('dplyr')
+
+
+# load the rio package into session
+library(rio)
+
+# load the ggplot2 package into session
+library(ggplot2)
+
+# load the dplyr package into session
+library(dplyr)
+```
+
+# Read in data
+## Get GitHub URLs
+```{r github-urls}
+# create a variable for the GitHub organization link
+git = "https://github.com/DACSS-601-Data-Science-Fundamentals/"
+
+# create a variable for the path to the data
+org = "hw5-exercise1/raw/refs/heads/main/data/"
+
+# concatenate git and org
+gitLocation = paste0(git,org)
+
+# create a vector to store the data URLs
+dataURLs = c()
+
+# iterate through each data file
+for(i in 1:18){
+  year = as.character(i+2005) # convert the year to a string
+  file = paste0("fsi-",year,".xlsx") # concatenate the strings for the data file name
+  fullLocation = paste0(gitLocation, file) # concatenate strings for the full file location
+  dataURLs[i] = fullLocation # add URL to the vector
+}
+```
+## Load data into session
+```{r load-data}
+# create a list to store the data
+data = lapply(dataURLs, rio::import)
+
+# check the dfs
+lapply(data, head)
+```
+# Cleaning the data
+## Clean column names
+```{r clean-column-names}
+# check the column names
+lapply(data, names)
+
+# clean the column names of each df
+data = lapply(data, function(df){
+  names(df) = gsub(" ", '_', names(df)) # replace spaces with underscores
+  names(df) = gsub("[^0-9a-zA-Z_]", '', names(df)) # remove any non-alphanumeric characters except underscores
+  return(df) # return the modified df
+})
+
+# check the column names again
+lapply(data, names)
+```
+
+## Select columns
+```{r select-columns}
+# select the specified columns of each df
+data = lapply(data, function(df){
+  df = df[, c("Country", "Year", "Rank", "Total", "C1_Security_Apparatus", "C2_Factionalized_Elites", "C3_Group_Grievance", "E1_Economy", "E2_Economic_Inequality", "E3_Human_Flight_and_Brain_Drain", "P1_State_Legitimacy", "P2_Public_Services", "P3_Human_Rights", "S1_Demographic_Pressures", "S2_Refugees_and_IDPs", "X1_External_Intervention")] # modify df with only the selected columns
+  return(df) # return modified df
+})
+
+# check the number of columns in each df to verify
+lapply(data, ncol)
+```
+## Reformat data values
+```{r reformat-data-values}
+# check the class of each column
+lapply(data, function(df){sapply(df, class)})
+```
+Notice that some "Year" columns are POSIXct values, and the "Rank" column contains characters. All other columns are numeric.
+
+### Clean "Year" column
+```{r clean-year-column}
+# iterate through each df and modify year value
+data = lapply(data, function(df) {
+  if(!is.numeric(df$Year)){ # check if the class is numeric
+    df$Year = as.integer(format(df$Year, "%Y")) # extract the year digits and convert to integer
+  } else{
+    df$Year = as.integer(df$Year) # ensure that the numeric value is an integer
+  }
+  return(df) # return modified df
+})
+
+# check the class of the Year column in each df
+lapply(data, function(df){class(df$Year)})
+
+# check the values of the Year column in each df
+lapply(data, function(df){head(df$Year)})
+```
+
+### Clean "Rank" column
+#### Check values
+```{r check-rank-values}
+# check the beginning values of the Rank column for each df
+lapply(data, function(df){head(df$Rank)})
+
+# check the end values of the Rank column for each df for consistency
+lapply(data, function(df){tail(df$Rank)})
+```
+#### Clean values
+```{r clean-rank-column}
+# clean the values of each df's Rank column
+data = lapply(data, function(df){
+  df$Rank = gsub("[^0-9]", '', df$Rank) # remove any non-numeric characters
+  df$Rank = as.integer(df$Rank) # convert the value to an integer
+  return(df) # return the modified df
+})
+
+# check the class of the Rank column in each df
+lapply(data, function(df){class(df$Rank)})
+
+# check the values of the Rank column in each df
+lapply(data, function(df){head(df$Rank)})
+```
+# Combine data
+```{r combine-data}
+# append files vertically
+combinedData = bind_rows(data)
+
+# check combinedData
+str(combinedData)
+```
+
+# Plotting
+
+## Total per Year boxplots
+```{r boxplot}
+# use boxplots in ggplot2 for Total per Year
+ggplot(combinedData, aes(x = factor(Year), y = Total)) + geom_boxplot() +
+  # add labels
+  labs(title = "Distribution of Total per Year", x = "Year", y = "Total")
+```
+
+## Security Apparatus, Factionalized Elites, Group Grievance in 2023 vs 2013
+```{r histogram}
+# select columns
+varColumns = c("C1_Security_Apparatus", "C2_Factionalized_Elites", "C3_Group_Grievance", "Year")
+
+# convert data to long format
+histogramData = tidyr::pivot_longer(data = combinedData[,varColumns],
+                                    cols = !Year, # except Year column
+                                    names_to = "Vars", # rename new column to Vars
+                                    values_to = "Values") # rename values column to Values
+
+# filter histogramData for only 2013 or 2023
+histogramData = filter(histogramData, Year == 2013 | Year == 2023)
+
+# create a histogram
+ggplot(histogramData, aes(x = Values)) + geom_histogram() +
+  facet_wrap(Year ~ Vars) + # want Year by Vars
+  labs(title = "Distribution of Values in 2013 vs. 2023", x = "Year", y = "Count")
+```
+
+
